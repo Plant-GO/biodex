@@ -1,0 +1,31 @@
+# Scans this file in every 30 seconds for changes
+refresh_rate: 30 seconds
+
+appenders:
+  # Appender with name stdout which logs to the console
+  stdout: 
+    kind: console
+    # Encoder is used for defining the pattern of log
+    encoder:
+      pattern: "{h({d} [{t}] {f} {m})}{n}"
+    filters:
+      # Only allows log messages at or above a certain severity level
+      - kind: threshold
+        level: debug
+
+  # Appender with a name plantgo which logs to a file log/plantgo.log
+  plantgo:
+    kind: file
+    path: "log/dex.log"
+    encoder:
+      pattern: "{h({d} [{t}] {f} {m})}{n}"
+    filters:
+      - kind: threshold
+        level: debug
+
+# If the logger can't match the given appenders, root is a fallback
+root:
+  level: debug
+  appenders: 
+    - stdout
+    - plantgo

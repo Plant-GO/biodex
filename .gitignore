@@ -1,0 +1,29 @@
+
+# Rust
+/target/
+**/target/
+Cargo.lock
+
+# Solana build artifacts
+program/target/
+program/.DS_Store
+
+# macOS
+.DS_Store
+
+# Environment files
+.env
+
+# Logs
+*.log
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Solana keys (NEVER commit these)
+**/*.json
+!client/example-keypair.json
+
+# Node / frontend (if added later)
+node_modules/
