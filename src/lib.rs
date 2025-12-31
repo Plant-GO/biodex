@@ -11,15 +11,33 @@ use solana_program::{
     sysvar::{rent::Rent, Sysvar},
 };
 
+pub mod instruction;
+pub mod processor;
+
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub struct CounterAccount {
     pub count: u64,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
-pub enum CounterInstruction {
-    InitializeCounter { initial_value: u64 },
-    IncrementCounter,
+pub enum CardRarityInstruction {
+    // Common
+    GenesisFragment,
+
+    // Rare
+    AstralShard,
+
+    // Epic
+    MythicCrest,
+
+    //Mastery
+    AscendantSeal,
+
+    // Knowledge
+    CodexOfInsight,
+
+    //First
+    PromordialRelic,
 }
 
 entrypoint!(process_instruction);
@@ -29,15 +47,8 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let instruction = CounterInstruction::try_from_slice(instruction_data)
+    let instruction = CardRarityInstruction::try_from_slice(instruction_data)
         .map_err(|_| ProgramError::InvalidInstructionData)?;
-
-    match instruction {
-        CounterInstruction::InitializeCounter { initial_value } => {
-            process_initialize_counter(program_id, accounts, initial_value)?
-        }
-        CounterInstruction::IncrementCounter => process_increment_counter(program_id, accounts)?,
-    };
 
     Ok(())
 }
