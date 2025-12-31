@@ -1,4 +1,3 @@
-
 # Rust
 /target/
 **/target/
@@ -27,3 +26,5 @@ program/.DS_Store
 
 # Node / frontend (if added later)
 node_modules/
+
+test-ledger
