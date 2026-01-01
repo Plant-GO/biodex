@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 
@@ -19,7 +21,7 @@ pub enum CardRarityInstruction {
     CodexOfInsight,
 
     //First
-    PromordialRelic,
+    PrimordialRelic,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
@@ -29,4 +31,18 @@ pub struct CardAccount {
     pub rarity: CardRarityInstruction,
     pub ipfs_cid: Vec<u64>,
     pub discovered_at: i64,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+pub struct CardSupply {
+    pub plant_id: u64,
+    pub epic_minted: u64,
+    pub rare_minted: u64,
+    pub common_minted: u64,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+pub struct UserCardOwnership {
+    pub user: Pubkey,
+    pub owned_plants: HashMap<u64, CardRarityInstruction>,
 }
