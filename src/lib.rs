@@ -29,9 +29,10 @@ pub fn process_instruction(
 
     match instruction {
         ProgramInstruction::CreateMint { args } => create_token(accounts, args)?,
-        ProgramInstruction::MintNFT { card_type } => {
-            Processor::process(program_id, accounts, card_type)?
-        }
+        ProgramInstruction::MintNFT {
+            card_type,
+            plant_name,
+        } => Processor::process(program_id, accounts, card_type, plant_name.as_str())?,
     };
 
     Ok(())

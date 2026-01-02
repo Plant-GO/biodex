@@ -7,9 +7,14 @@ use crate::mint::CreateTokenArgs;
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub enum ProgramInstruction {
-    CreateMint { args: CreateTokenArgs },
+    CreateMint {
+        args: CreateTokenArgs,
+    },
 
-    MintNFT { card_type: CardRarityInstruction },
+    MintNFT {
+        card_type: CardRarityInstruction,
+        plant_name: String,
+    },
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
