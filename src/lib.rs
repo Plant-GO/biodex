@@ -1,16 +1,10 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use instruction::CardRarityInstruction;
+use instruction::ProgramInstruction;
+use mint::create_token;
 use processor::Processor;
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
-    entrypoint,
-    entrypoint::ProgramResult,
-    msg,
-    program::invoke,
-    program_error::ProgramError,
+    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction,
-    sysvar::{rent::Rent, Sysvar},
 };
 
 pub mod instruction;
@@ -30,9 +24,15 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let instruction = CardRarityInstruction::try_from_slice(instruction_data)
+    let instruction = ProgramInstruction::try_from_slice(instruction_data)
         .map_err(|_| ProgramError::InvalidInstructionData)?;
-    Processor::process(program_id, accounts, instruction_data)?;
+
+    match instruction {
+        ProgramInstruction::CreateMint { args } => create_token(accounts, args)?,
+        ProgramInstruction::MintNFT { card_type } => {
+            Processor::process(program_id, accounts, card_type)?
+        }
+    };
 
     Ok(())
 }

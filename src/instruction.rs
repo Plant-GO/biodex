@@ -3,6 +3,15 @@ use std::collections::HashMap;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 
+use crate::mint::CreateTokenArgs;
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+pub enum ProgramInstruction {
+    CreateMint { args: CreateTokenArgs },
+
+    MintNFT { card_type: CardRarityInstruction },
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub enum CardRarityInstruction {
     // Common
