@@ -72,6 +72,10 @@ impl Processor {
         Ok(())
     }
 
+    // todo: Aba chai what we need to do is, plant ko mapping to store it in the chain itself rarity     so that immutable hos and in someway find better way to do it, maybe chain ma store nai garna     pardaina ki, is backend better
+    // todo: IPFS ma naya aako plant store garne naya card mint garne ani ty plant lai plant
+    // registry ma rarity anushar rakhne follows mathi k kura ko completion
+    // todo: Knowledge/Mastery Card Logic
     fn process_minting(
         program_id: &Pubkey,
         accounts: &[AccountInfo],
