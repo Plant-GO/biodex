@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
+use crate::mint::CreateTokenArgs;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
-
-use crate::mint::CreateTokenArgs;
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub enum ProgramInstruction {
@@ -15,6 +14,26 @@ pub enum ProgramInstruction {
         card_type: CardRarityInstruction,
         plant_name: String,
     },
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+pub struct PlantInfo {
+    pub name: String,
+    pub rarity: CardRarityInstruction,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+pub struct PlantRegistry {
+    pub plants: Vec<PlantInfo>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+pub struct PlantCounter {
+    pub plant_name: String,
+    pub epic_count: u64,
+    pub rare_count: u64,
+    pub common_count: u64,
+    pub first_minter: Option<Pubkey>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]

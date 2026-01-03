@@ -1,3 +1,4 @@
+use crate::instruction::{CardRarityInstruction, PlantCounter};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::{self, ProgramResult},
@@ -12,7 +13,8 @@ use solana_sdk::program::invoke_signed;
 use spl_associated_token_account::instruction as associated_token_account_instruction;
 use spl_token::instruction as token_instruction;
 
-use crate::instruction::CardRarityInstruction;
+const MAX_EPIC: u64 = 20;
+const MAX_RARE: u64 = 50;
 
 pub struct Processor {}
 
@@ -74,12 +76,15 @@ impl Processor {
         program_id: &Pubkey,
         accounts: &[AccountInfo],
         card_type: CardRarityInstruction,
+        requested_rarity: CardRarityInstruction,
         plant_name: &str,
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
 
         let user_wallet_account = next_account_info(accounts_iter)?;
-        let mint_account = next_account_info(accounts_iter)?;
+        let common_mint_account = next_account_info(accounts_iter)?;
+        let rare_mint_account = next_account_info(accounts_iter)?;
+        let epic_mint_account = next_account_info(accounts_iter)?;
         let metadata_account = next_account_info(accounts_iter)?;
         let edition_account = next_account_info(accounts_iter)?;
         let mint_authority = next_account_info(accounts_iter)?;
@@ -91,6 +96,7 @@ impl Processor {
         let associated_token_program = next_account_info(accounts_iter)?;
         let token_metadata_program = next_account_info(accounts_iter)?;
         let ownership_account = next_account_info(accounts_iter)?;
+        let plant_counter_account = next_account_info(accounts_iter)?;
 
         let (ownership_pda, bump) = Pubkey::find_program_address(
             &[plant_name.as_bytes(), user_wallet_account.key.as_ref()],
@@ -106,6 +112,44 @@ impl Processor {
             msg!("User already owns this card for plant: {}", plant_name);
             return Err(ProgramError::Custom(999));
         }
+
+        let (plant_counter_pda, bump) =
+            Pubkey::find_program_address(&[b"plant_counter", plant_name.as_bytes()], program_id);
+
+        if plant_counter_pda != *plant_counter_account.key {
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        let mut counter = if plant_counter_account.data_is_empty() {
+            PlantCounter {
+                plant_name: plant_name.to_string(),
+                epic_count: 0,
+                rare_count: 0,
+                common_count: 0,
+                first_minter: None,
+            }
+        } else {
+            PlantCounter::try_from_slice(&plant_counter_account.data.borrow())?
+        };
+
+        let (final_rarity, mint_account) = match requested_rarity {
+            CardRarityInstruction::MythicCrest if counter.epic_count < MAX_EPIC => {
+                counter.epic_count += 1;
+                (CardRarityInstruction::MythicCrest, epic_mint_account)
+            }
+            CardRarityInstruction::MythicCrest | CardRarityInstruction::AstralShard
+                if counter.rare < MAX_RARE =>
+            {
+                counter.rare_count += 1;
+                (CardRarityInstruction::AstralShard, rare_mint_account)
+            }
+            _ => {
+                counter.common_count += 1;
+                (CardRarityInstruction::GenesisFragment, common_mint_account)
+            }
+        };
+
+        msg!("Minting {:?} card for plant {}", final_rarity, plant_name);
 
         if associated_token_account.lamports() == 0 {
             msg!("Creating associated token account...");
@@ -404,10 +448,10 @@ mod test {
 
             let result = banks_client.process_transaction(tx).await;
             if result.is_ok() {
-                println!("✅ Duplicate mint allowed for GenesisFragment");
+                println!("Duplicate mint allowed for GenesisFragment");
             } else {
                 println!(
-                    "❌ Duplicate mint rejected for GenesisFragment: {:?}",
+                    "Duplicate mint rejected for GenesisFragment: {:?}",
                     result.err()
                 );
             }
