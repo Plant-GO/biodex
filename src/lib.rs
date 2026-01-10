@@ -10,7 +10,6 @@ use solana_program::{
 pub mod instruction;
 pub mod mint;
 pub mod processor;
-pub mod types;
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub struct CounterAccount {
@@ -19,9 +18,9 @@ pub struct CounterAccount {
 
 entrypoint!(process_instruction);
 
-pub fn process_instruction(
+pub fn process_instruction<'a>(
     program_id: &Pubkey,
-    accounts: &[AccountInfo],
+    accounts: &'a [AccountInfo<'a>],
     instruction_data: &[u8],
 ) -> ProgramResult {
     let instruction = ProgramInstruction::try_from_slice(instruction_data)
@@ -33,12 +32,14 @@ pub fn process_instruction(
             card_type,
             plant_name,
             is_new_species,
+            quiz_winner,
         } => Processor::process(
             program_id,
             accounts,
             card_type,
             plant_name.as_str(),
             is_new_species,
+            quiz_winner,
         )?,
     };
 

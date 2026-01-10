@@ -3,6 +3,41 @@ use std::collections::HashMap;
 use crate::mint::CreateTokenArgs;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
+use solana_sdk::{clock::UnixTimestamp, sysvar::Sysvar};
+
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct OwnershipRecord {
+    pub owner: Pubkey,
+
+    pub plant_name: String,
+
+    pub rarity: CardRarityInstruction,
+
+    pub minted_at: UnixTimestamp,
+
+    pub nft_mint: Pubkey,
+}
+
+impl OwnershipRecord {
+    pub const MAX_SIZE: usize = 32 + 4 + 50 + 1 + 8 + 32;
+
+    pub fn new(
+        owner: Pubkey,
+        plant_name: String,
+        rarity: CardRarityInstruction,
+        nft_mint: Pubkey,
+    ) -> OwnershipRecord {
+        Self {
+            owner,
+            plant_name,
+            rarity,
+            minted_at: solana_program::clock::Clock::get()
+                .map(|c| c.unix_timestamp)
+                .unwrap_or(0),
+            nft_mint,
+        }
+    }
+}
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub enum ProgramInstruction {
