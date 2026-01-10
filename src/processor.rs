@@ -13,6 +13,7 @@ use solana_program::{
 use solana_sdk::program::invoke_signed;
 use spl_associated_token_account::instruction as associated_token_account_instruction;
 use spl_token::instruction as token_instruction;
+use tokio::time::Sleep;
 
 const MAX_EPIC: u64 = 20;
 const MAX_RARE: u64 = 50;
@@ -25,6 +26,7 @@ impl Processor {
         accounts: &[AccountInfo],
         instruction: CardRarityInstruction,
         plant_name: &str,
+        is_new_species: bool,
     ) -> ProgramResult {
         match instruction {
             CardRarityInstruction::GenesisFragment => Self::process_minting(
@@ -32,6 +34,7 @@ impl Processor {
                 accounts,
                 CardRarityInstruction::GenesisFragment,
                 plant_name,
+                is_new_species,
             )?,
 
             CardRarityInstruction::AstralShard => Self::process_minting(
@@ -39,6 +42,7 @@ impl Processor {
                 accounts,
                 CardRarityInstruction::AstralShard,
                 plant_name,
+                is_new_species,
             )?,
 
             CardRarityInstruction::MythicCrest => Self::process_minting(
@@ -46,6 +50,7 @@ impl Processor {
                 accounts,
                 CardRarityInstruction::MythicCrest,
                 plant_name,
+                is_new_species,
             )?,
 
             CardRarityInstruction::AscendantSeal => Self::process_minting(
@@ -53,6 +58,7 @@ impl Processor {
                 accounts,
                 CardRarityInstruction::AscendantSeal,
                 plant_name,
+                is_new_species,
             )?,
 
             CardRarityInstruction::CodexOfInsight => Self::process_minting(
@@ -60,6 +66,7 @@ impl Processor {
                 accounts,
                 CardRarityInstruction::CodexOfInsight,
                 plant_name,
+                is_new_species,
             )?,
 
             CardRarityInstruction::PrimordialRelic => Self::process_minting(
@@ -67,41 +74,28 @@ impl Processor {
                 accounts,
                 CardRarityInstruction::PrimordialRelic,
                 plant_name,
+                is_new_species,
+            )?,
+
+            CardRarityInstruction::AuroraSeed => Self::process_minting(
+                program_id,
+                accounts,
+                CardRarityInstruction::PrimordialRelic,
+                plant_name,
+                is_new_species,
             )?,
         }
 
         Ok(())
     }
 
-    // todo: Aba chai what we need to do is, plant ko mapping to store it in the chain itself rarity     so that immutable hos and in someway find better way to do it, maybe chain ma store nai garna     pardaina ki, is backend better
-    // todo: IPFS ma naya aako plant store garne naya card mint garne ani ty plant lai plant
-    // registry ma rarity anushar rakhne follows mathi k kura ko completion
-    // todo: Knowledge/Mastery Card Logic
-    fn process_minting(
+    fn process_ownership_account(
+        ownership_account: &AccountInfo,
         program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        card_type: CardRarityInstruction,
         plant_name: &str,
-    ) -> ProgramResult {
-        let accounts_iter = &mut accounts.iter();
-
-        let user_wallet_account = next_account_info(accounts_iter)?;
-        let common_mint_account = next_account_info(accounts_iter)?;
-        let rare_mint_account = next_account_info(accounts_iter)?;
-        let epic_mint_account = next_account_info(accounts_iter)?;
-        let metadata_account = next_account_info(accounts_iter)?;
-        let edition_account = next_account_info(accounts_iter)?;
-        let mint_authority = next_account_info(accounts_iter)?;
-        let associated_token_account = next_account_info(accounts_iter)?;
-        let payer = next_account_info(accounts_iter)?;
-        let rent = next_account_info(accounts_iter)?;
-        let system_program = next_account_info(accounts_iter)?;
-        let token_program = next_account_info(accounts_iter)?;
-        let associated_token_program = next_account_info(accounts_iter)?;
-        let token_metadata_program = next_account_info(accounts_iter)?;
-        let ownership_account = next_account_info(accounts_iter)?;
-        let plant_counter_account = next_account_info(accounts_iter)?;
-
+        card_type: CardRarityInstruction,
+        user_wallet_account: &AccountInfo,
+    ) -> Result<(Pubkey, u8), ProgramError> {
         let (ownership_pda, ownership_bump) = Pubkey::find_program_address(
             &[
                 plant_name.as_bytes(),
@@ -121,41 +115,112 @@ impl Processor {
             return Err(ProgramError::Custom(999));
         }
 
-        let (plant_counter_pda, plant_counter_bump) =
+        Ok((ownership_pda, ownership_bump))
+    }
+
+    fn process_plant_counter_pda(
+        plant_name: &str,
+        program_id: &Pubkey,
+        plant_counter_account: &AccountInfo,
+    ) -> Result<(Pubkey, u8), ProgramError> {
+        let (plant_counter_pda, _plant_counter_bump) =
             Pubkey::find_program_address(&[b"plant_counter", plant_name.as_bytes()], program_id);
 
         if plant_counter_pda != *plant_counter_account.key {
             return Err(ProgramError::InvalidArgument);
         }
 
-        let mut counter = if plant_counter_account.data_is_empty() {
+        Ok((plant_counter_pda, _plant_counter_bump))
+    }
+
+    fn process_minting(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        card_type: CardRarityInstruction,
+        plant_name: &str,
+        is_new_species: bool,
+    ) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+
+        let user_wallet_account = next_account_info(accounts_iter)?;
+        let common_mint_account = next_account_info(accounts_iter)?;
+        let rare_mint_account = next_account_info(accounts_iter)?;
+        let epic_mint_account = next_account_info(accounts_iter)?;
+        let aurora_mint_account = next_account_info(accounts_iter)?;
+        let primordial_mint_account = next_account_info(accounts_iter)?;
+        let metadata_account = next_account_info(accounts_iter)?;
+        let edition_account = next_account_info(accounts_iter)?;
+        let mint_authority = next_account_info(accounts_iter)?;
+        let associated_token_account = next_account_info(accounts_iter)?;
+        let payer = next_account_info(accounts_iter)?;
+        let rent = next_account_info(accounts_iter)?;
+        let system_program = next_account_info(accounts_iter)?;
+        let token_program = next_account_info(accounts_iter)?;
+        let associated_token_program = next_account_info(accounts_iter)?;
+        let token_metadata_program = next_account_info(accounts_iter)?;
+        let ownership_account = next_account_info(accounts_iter)?;
+        let plant_counter_account = next_account_info(accounts_iter)?;
+
+        let (_ownership_pda, ownership_bump) = Self::process_ownership_account(
+            ownership_account,
+            program_id,
+            plant_name,
+            card_type.clone(),
+            user_wallet_account,
+        )
+        .unwrap();
+
+        let (_plant_counter_pda, _) =
+            Self::process_plant_counter_pda(plant_name, program_id, plant_counter_account).unwrap();
+
+        let is_first_on_chain = plant_counter_account.data_is_empty();
+
+        let mut counter = if is_first_on_chain {
             PlantCounter {
                 plant_name: plant_name.to_string(),
+                seed_count: 0,
+                relic_count: 0,
                 epic_count: 0,
                 rare_count: 0,
                 common_count: 0,
+                mastery_count: 0,
+                codex_count: 0,
                 first_minter: None,
             }
         } else {
             PlantCounter::try_from_slice(&plant_counter_account.data.borrow())?
         };
 
-        let (final_rarity, mint_account) = match card_type {
-            CardRarityInstruction::MythicCrest if counter.epic_count < MAX_EPIC => {
+        let (final_rarity, mint_account) =
+            if is_new_species && is_first_on_chain && counter.seed_count == 0 {
+                msg!("AuroraSeed AWARDED!");
+                msg!("This is a brand new species discovery!");
+                counter.first_minter = Some(*user_wallet_account.key);
                 counter.epic_count += 1;
-                (CardRarityInstruction::MythicCrest, epic_mint_account)
-            }
-            CardRarityInstruction::MythicCrest | CardRarityInstruction::AstralShard
-                if counter.rare_count < MAX_RARE =>
-            {
-                counter.rare_count += 1;
-                (CardRarityInstruction::AstralShard, rare_mint_account)
-            }
-            _ => {
-                counter.common_count += 1;
-                (CardRarityInstruction::GenesisFragment, common_mint_account)
-            }
-        };
+                (CardRarityInstruction::PrimordialRelic, aurora_mint_account)
+            } else if !is_new_species && is_first_on_chain && counter.relic_count == 0 {
+                msg!("PrimordialRelic AWARDED!");
+                msg!("First person to photograph this known plant!");
+                counter.epic_count += 1;
+                counter.first_minter = Some(*user_wallet_account.key);
+                (
+                    CardRarityInstruction::AscendantSeal,
+                    primordial_mint_account,
+                )
+            } else {
+                msg!("Regular rarity distribution");
+
+                if counter.epic_count < MAX_EPIC {
+                    counter.epic_count += 1;
+                    (CardRarityInstruction::MythicCrest, epic_mint_account)
+                } else if counter.rare_count < MAX_RARE {
+                    counter.rare_count += 1;
+                    (CardRarityInstruction::AstralShard, rare_mint_account)
+                } else {
+                    counter.common_count += 1;
+                    (CardRarityInstruction::GenesisFragment, common_mint_account)
+                }
+            };
 
         msg!("Final rarity: {:?}", final_rarity);
 
@@ -207,7 +272,6 @@ impl Processor {
 
         msg!("NFT minted successfully");
 
-        // ✅ FIX: Use the correct seeds with ownership_bump
         invoke_signed(
             &system_instruction::create_account(
                 &payer.key,
@@ -225,7 +289,143 @@ impl Processor {
                 plant_name.as_bytes(),
                 user_wallet_account.key.as_ref(),
                 &[card_type.clone() as u8],
-                &[ownership_bump], // ✅ Use ownership_bump, not plant_counter bump
+                &[ownership_bump],
+            ]],
+        )?;
+
+        Ok(())
+    }
+
+    fn process_quiz(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        card_type: CardRarityInstruction,
+        plant_name: &str,
+        is_winner: bool,
+    ) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+
+        let user_wallet_account = next_account_info(accounts_iter)?;
+        let common_mint_account = next_account_info(accounts_iter)?;
+        let rare_mint_account = next_account_info(accounts_iter)?;
+        let epic_mint_account = next_account_info(accounts_iter)?;
+        let ascendant_mint_account = next_account_info(accounts_iter)?;
+        let primordial_mint_account = next_account_info(accounts_iter)?;
+        let codex_mint_account = next_account_info(accounts_iter)?; // Knowledge card mint
+        let mastery_mint_account = next_account_info(accounts_iter)?; // Mastery card mint
+        let metadata_account = next_account_info(accounts_iter)?;
+        let edition_account = next_account_info(accounts_iter)?;
+        let mint_authority = next_account_info(accounts_iter)?;
+        let associated_token_account = next_account_info(accounts_iter)?;
+        let payer = next_account_info(accounts_iter)?;
+        let rent = next_account_info(accounts_iter)?;
+        let system_program = next_account_info(accounts_iter)?;
+        let token_program = next_account_info(accounts_iter)?;
+        let associated_token_program = next_account_info(accounts_iter)?;
+        let token_metadata_program = next_account_info(accounts_iter)?;
+        let ownership_account = next_account_info(accounts_iter)?;
+        let plant_counter_account = next_account_info(accounts_iter)?;
+
+        let (_, ownership_bump) = Self::process_ownership_account(
+            ownership_account,
+            program_id,
+            plant_name,
+            card_type,
+            user_wallet_account,
+        )
+        .unwrap();
+
+        let (_plant_counter_pda, _) =
+            Self::process_plant_counter_pda(plant_name, program_id, plant_counter_account).unwrap();
+
+        let mut counter = if plant_counter_account.data_is_empty() {
+            PlantCounter {
+                plant_name: plant_name.to_string(),
+                epic_count: 0,
+                rare_count: 0,
+                seed_count: 0,
+                relic_count: 0,
+                common_count: 0,
+                first_minter: None,
+                codex_count: 0,
+                mastery_count: 0,
+            }
+        } else {
+            PlantCounter::try_from_slice(&plant_counter_account.data.borrow())?
+        };
+
+        let (final_card, mint_account) = if is_winner {
+            msg!("MythicCrest AWARDED - Quiz Winner!");
+            counter.mastery_count += 1;
+            (CardRarityInstruction::MythicCrest, mastery_mint_account)
+        } else {
+            msg!("CodexOfInsight AWARDED - Quiz Participation!");
+            counter.codex_count += 1;
+            (CardRarityInstruction::CodexOfInsight, codex_mint_account)
+        };
+
+        if associated_token_account.lamports() == 0 {
+            msg!("Creating associated token account...");
+
+            invoke(
+                &associated_token_account_instruction::create_associated_token_account(
+                    payer.key,
+                    user_wallet_account.key,
+                    mint_account.key,
+                    token_program.key,
+                ),
+                &[
+                    payer.clone(),
+                    associated_token_account.clone(),
+                    user_wallet_account.clone(),
+                    mint_account.clone(),
+                    system_program.clone(),
+                    token_program.clone(),
+                    rent.clone(),
+                ],
+            )?;
+        }
+
+        msg!("Associated Token Address: {}", associated_token_account.key);
+
+        msg!("Minting NFT to associated token account...");
+        invoke(
+            &token_instruction::mint_to(
+                token_program.key,
+                mint_account.key,
+                associated_token_account.key,
+                mint_authority.key,
+                &[mint_authority.key],
+                1,
+            )?,
+            &[
+                mint_account.clone(),
+                mint_authority.clone(),
+                associated_token_account.clone(),
+                token_program.clone(),
+            ],
+        )?;
+
+        msg!("NFT minted successfully");
+
+        invoke_signed(
+            &system_instruction::create_account(
+                &payer.key,
+                &ownership_account.key,
+                Rent::get()?.minimum_balance(0),
+                0,
+                program_id,
+            ),
+            &[
+                payer.clone(),
+                system_program.clone(),
+                ownership_account.clone(),
+            ],
+            &[&[
+                plant_name.as_bytes(),
+                user_wallet_account.key.as_ref(),
+                &[card_type.clone() as u8],
+                &[ownership_bump],
             ]],
         )?;
 
@@ -371,29 +571,30 @@ mod tests {
                 &ProgramInstruction::MintNFT {
                     card_type: rarity.clone(),
                     plant_name: plant_name.to_string(),
+                    is_new_species: false,
                 }
                 .try_to_vec()
                 .unwrap(),
                 vec![
-                    AccountMeta::new(user_wallet.pubkey(), true),  // 0: User
-                    AccountMeta::new(common_mint.pubkey(), false), // 1: Common mint
-                    AccountMeta::new(rare_mint.pubkey(), false),   // 2: Rare mint
-                    AccountMeta::new(epic_mint.pubkey(), false),   // 3: Epic mint
-                    AccountMeta::new(metadata.pubkey(), false),    // 4: Metadata
-                    AccountMeta::new(edition.pubkey(), false),     // 5: Edition
-                    AccountMeta::new(mint_authority.pubkey(), true), // 6: Mint authority (signer)
+                    AccountMeta::new(user_wallet.pubkey(), true),
+                    AccountMeta::new(common_mint.pubkey(), false),
+                    AccountMeta::new(rare_mint.pubkey(), false),
+                    AccountMeta::new(epic_mint.pubkey(), false),
+                    AccountMeta::new(metadata.pubkey(), false),
+                    AccountMeta::new(edition.pubkey(), false),
+                    AccountMeta::new(mint_authority.pubkey(), true),
                     AccountMeta::new(
                         get_associated_token_address(&user_wallet.pubkey(), &mint.pubkey()),
                         false,
-                    ), // 7: ATA
-                    AccountMeta::new(payer.pubkey(), true),        // 8: Payer (signer)
-                    AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false), // 9
-                    AccountMeta::new_readonly(system_program::id(), false), // 10
-                    AccountMeta::new_readonly(token_program_id(), false), // 11
-                    AccountMeta::new_readonly(spl_associated_token_account::id(), false), // 12: ATA program
-                    AccountMeta::new_readonly(spl_associated_token_account::id(), false), // 13: Token metadata program?
-                    AccountMeta::new(ownership_pda, false), // 14: Ownership PDA
-                    AccountMeta::new(plant_counter_pda, false), // 15: Plant counter PDA
+                    ),
+                    AccountMeta::new(payer.pubkey(), true),
+                    AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
+                    AccountMeta::new_readonly(system_program::id(), false),
+                    AccountMeta::new_readonly(token_program_id(), false),
+                    AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+                    AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+                    AccountMeta::new(ownership_pda, false),
+                    AccountMeta::new(plant_counter_pda, false),
                 ],
             );
 
@@ -411,6 +612,7 @@ mod tests {
         let duplicate_data = ProgramInstruction::MintNFT {
             card_type: CardRarityInstruction::GenesisFragment,
             plant_name: plant_name.to_string(),
+            is_new_species: false,
         }
         .try_to_vec()
         .unwrap();
@@ -432,25 +634,25 @@ mod tests {
             program_id,
             &duplicate_data,
             vec![
-                AccountMeta::new(user_wallet.pubkey(), true),  // 0: User
-                AccountMeta::new(common_mint.pubkey(), false), // 1: Common mint
-                AccountMeta::new(rare_mint.pubkey(), false),   // 2: Rare mint
-                AccountMeta::new(epic_mint.pubkey(), false),   // 3: Epic mint
-                AccountMeta::new(metadata_common.pubkey(), false), // 4: Metadata
-                AccountMeta::new(edition_common.pubkey(), false), // 5: Edition
-                AccountMeta::new(mint_authority.pubkey(), true), // 6: Mint authority (signer)
+                AccountMeta::new(user_wallet.pubkey(), true),
+                AccountMeta::new(common_mint.pubkey(), false),
+                AccountMeta::new(rare_mint.pubkey(), false),
+                AccountMeta::new(epic_mint.pubkey(), false),
+                AccountMeta::new(metadata_common.pubkey(), false),
+                AccountMeta::new(edition_common.pubkey(), false),
+                AccountMeta::new(mint_authority.pubkey(), true),
                 AccountMeta::new(
                     get_associated_token_address(&user_wallet.pubkey(), &common_mint.pubkey()),
                     false,
-                ), // 7: ATA
-                AccountMeta::new(payer.pubkey(), true),        // 8: Payer (signer)
-                AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false), // 9
-                AccountMeta::new_readonly(system_program::id(), false), // 10
-                AccountMeta::new_readonly(token_program_id(), false), // 11
-                AccountMeta::new_readonly(spl_associated_token_account::id(), false), // 12: ATA program
-                AccountMeta::new_readonly(spl_associated_token_account::id(), false), // 13: Token metadata program?
-                AccountMeta::new(ownership_pda, false), // 14: Ownership PDA
-                AccountMeta::new(plant_counter_pda, false), // 15: Plant counter PDA
+                ),
+                AccountMeta::new(payer.pubkey(), true),
+                AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
+                AccountMeta::new_readonly(system_program::id(), false),
+                AccountMeta::new_readonly(token_program_id(), false),
+                AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+                AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+                AccountMeta::new(ownership_pda, false),
+                AccountMeta::new(plant_counter_pda, false),
             ],
         );
 

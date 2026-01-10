@@ -13,6 +13,8 @@ pub enum ProgramInstruction {
     MintNFT {
         card_type: CardRarityInstruction,
         plant_name: String,
+        is_new_species: Option<bool>,
+        quiz_winner: Option<bool>,
     },
 }
 
@@ -30,9 +32,13 @@ pub struct PlantRegistry {
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub struct PlantCounter {
     pub plant_name: String,
+    pub seed_count: u64,
+    pub relic_count: u64,
     pub epic_count: u64,
     pub rare_count: u64,
     pub common_count: u64,
+    pub mastery_count: u64,
+    pub codex_count: u64,
     pub first_minter: Option<Pubkey>,
 }
 
@@ -55,6 +61,9 @@ pub enum CardRarityInstruction {
 
     //First
     PrimordialRelic,
+
+    // Only first
+    AuroraSeed,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]

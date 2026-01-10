@@ -32,7 +32,14 @@ pub fn process_instruction(
         ProgramInstruction::MintNFT {
             card_type,
             plant_name,
-        } => Processor::process(program_id, accounts, card_type, plant_name.as_str())?,
+            is_new_species,
+        } => Processor::process(
+            program_id,
+            accounts,
+            card_type,
+            plant_name.as_str(),
+            is_new_species,
+        )?,
     };
 
     Ok(())
