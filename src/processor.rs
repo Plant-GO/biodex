@@ -1,7 +1,8 @@
 use crate::instruction::{CardRarityInstruction, PlantCounter};
+use borsh::BorshDeserialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    entrypoint::{self, ProgramResult},
+    entrypoint::ProgramResult,
     msg,
     program::invoke,
     program_error::ProgramError,
@@ -80,7 +81,6 @@ impl Processor {
         program_id: &Pubkey,
         accounts: &[AccountInfo],
         card_type: CardRarityInstruction,
-        requested_rarity: CardRarityInstruction,
         plant_name: &str,
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
@@ -102,8 +102,12 @@ impl Processor {
         let ownership_account = next_account_info(accounts_iter)?;
         let plant_counter_account = next_account_info(accounts_iter)?;
 
-        let (ownership_pda, bump) = Pubkey::find_program_address(
-            &[plant_name.as_bytes(), user_wallet_account.key.as_ref()],
+        let (ownership_pda, ownership_bump) = Pubkey::find_program_address(
+            &[
+                plant_name.as_bytes(),
+                user_wallet_account.key.as_ref(),
+                &[card_type.clone() as u8],
+            ],
             program_id,
         );
 
@@ -117,7 +121,7 @@ impl Processor {
             return Err(ProgramError::Custom(999));
         }
 
-        let (plant_counter_pda, bump) =
+        let (plant_counter_pda, plant_counter_bump) =
             Pubkey::find_program_address(&[b"plant_counter", plant_name.as_bytes()], program_id);
 
         if plant_counter_pda != *plant_counter_account.key {
@@ -136,13 +140,13 @@ impl Processor {
             PlantCounter::try_from_slice(&plant_counter_account.data.borrow())?
         };
 
-        let (final_rarity, mint_account) = match requested_rarity {
+        let (final_rarity, mint_account) = match card_type {
             CardRarityInstruction::MythicCrest if counter.epic_count < MAX_EPIC => {
                 counter.epic_count += 1;
                 (CardRarityInstruction::MythicCrest, epic_mint_account)
             }
             CardRarityInstruction::MythicCrest | CardRarityInstruction::AstralShard
-                if counter.rare < MAX_RARE =>
+                if counter.rare_count < MAX_RARE =>
             {
                 counter.rare_count += 1;
                 (CardRarityInstruction::AstralShard, rare_mint_account)
@@ -152,6 +156,8 @@ impl Processor {
                 (CardRarityInstruction::GenesisFragment, common_mint_account)
             }
         };
+
+        msg!("Final rarity: {:?}", final_rarity);
 
         msg!("Minting {:?} card for plant {}", final_rarity, plant_name);
 
@@ -166,13 +172,13 @@ impl Processor {
                     token_program.key,
                 ),
                 &[
-                    payer.clone(),                    // 0
-                    associated_token_account.clone(), // 1
-                    user_wallet_account.clone(),      // 2
-                    mint_account.clone(),             // 3
-                    system_program.clone(),           // 4
-                    token_program.clone(),            // 5
-                    rent.clone(),                     // 6
+                    payer.clone(),
+                    associated_token_account.clone(),
+                    user_wallet_account.clone(),
+                    mint_account.clone(),
+                    system_program.clone(),
+                    token_program.clone(),
+                    rent.clone(),
                 ],
             )?;
         } else {
@@ -184,11 +190,11 @@ impl Processor {
         msg!("Minting NFT to associated token account...");
         invoke(
             &token_instruction::mint_to(
-                token_program.key,            // token program id
-                mint_account.key,             // mint pubkey
-                associated_token_account.key, // account
-                mint_authority.key,           // owner
-                &[mint_authority.key],        // signers
+                token_program.key,
+                mint_account.key,
+                associated_token_account.key,
+                mint_authority.key,
+                &[mint_authority.key],
                 1,
             )?,
             &[
@@ -201,12 +207,13 @@ impl Processor {
 
         msg!("NFT minted successfully");
 
+        // ✅ FIX: Use the correct seeds with ownership_bump
         invoke_signed(
             &system_instruction::create_account(
                 &payer.key,
                 &ownership_account.key,
                 Rent::get()?.minimum_balance(0),
-                0, // space
+                0,
                 program_id,
             ),
             &[
@@ -217,7 +224,8 @@ impl Processor {
             &[&[
                 plant_name.as_bytes(),
                 user_wallet_account.key.as_ref(),
-                &[bump],
+                &[card_type.clone() as u8],
+                &[ownership_bump], // ✅ Use ownership_bump, not plant_counter bump
             ]],
         )?;
 
@@ -226,11 +234,13 @@ impl Processor {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use crate::{
-        instruction::CardRarityInstruction, instruction::ProgramInstruction, mint::CreateTokenArgs,
+        instruction::{CardRarityInstruction, ProgramInstruction},
+        mint::CreateTokenArgs,
         process_instruction,
     };
+
     use borsh::BorshSerialize;
     use solana_program_test::*;
     use solana_sdk::{
@@ -240,12 +250,14 @@ mod test {
         system_instruction, system_program,
         transaction::Transaction,
     };
+
     use spl_associated_token_account::get_associated_token_address;
     use spl_token::id as token_program_id;
 
     #[tokio::test]
-    async fn test_nft_creation_and_minting() {
+    async fn test_nft_creation_and_minting_with_rarity() {
         let program_id = Pubkey::new_unique();
+
         let program_test = ProgramTest::new("program", program_id, processor!(process_instruction));
 
         let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
@@ -253,18 +265,15 @@ mod test {
         let user_wallet = Keypair::new();
         let mint_authority = Keypair::new();
 
-        let fund_user_ix =
-            system_instruction::transfer(&payer.pubkey(), &user_wallet.pubkey(), 1_000_000_000);
-        let mut fund_tx = Transaction::new_with_payer(&[fund_user_ix], Some(&payer.pubkey()));
-        fund_tx.sign(&[&payer], recent_blockhash);
-        banks_client.process_transaction(fund_tx).await.unwrap();
+        // Fund user & authority
+        for kp in [&user_wallet, &mint_authority] {
+            let ix = system_instruction::transfer(&payer.pubkey(), &kp.pubkey(), 1_000_000_000);
+            let mut tx = Transaction::new_with_payer(&[ix], Some(&payer.pubkey()));
+            tx.sign(&[&payer], recent_blockhash);
+            banks_client.process_transaction(tx).await.unwrap();
+        }
 
-        let fund_authority_ix =
-            system_instruction::transfer(&payer.pubkey(), &mint_authority.pubkey(), 1_000_000_000);
-        let mut fund_tx = Transaction::new_with_payer(&[fund_authority_ix], Some(&payer.pubkey()));
-        fund_tx.sign(&[&payer], recent_blockhash);
-        banks_client.process_transaction(fund_tx).await.unwrap();
-
+        // Mints
         let common_mint = Keypair::new();
         let rare_mint = Keypair::new();
         let epic_mint = Keypair::new();
@@ -277,22 +286,24 @@ mod test {
         let edition_rare = Keypair::new();
         let edition_epic = Keypair::new();
 
-        for (mint, metadata, title, symbol) in &[
+        let mint_data = [
             (&common_mint, &metadata_common, "Orange", "GenesisFragment"),
             (&rare_mint, &metadata_rare, "Marigold", "AstralShard"),
             (&epic_mint, &metadata_epic, "Sunflower", "MythicCrest"),
-        ] {
-            let create_args = CreateTokenArgs {
+        ];
+
+        for (mint, metadata, title, symbol) in mint_data {
+            let args = CreateTokenArgs {
                 nft_title: title.to_string(),
                 nft_symbol: symbol.to_string(),
                 nft_uri: "https://example.com/nft.json".to_string(),
             };
 
-            let data = ProgramInstruction::CreateMint { args: create_args }
+            let data = ProgramInstruction::CreateMint { args }
                 .try_to_vec()
-                .expect("Failed to serialize CreateMint instruction");
+                .unwrap();
 
-            let instruction = Instruction::new_with_bytes(
+            let ix = Instruction::new_with_bytes(
                 program_id,
                 &data,
                 vec![
@@ -303,164 +314,155 @@ mod test {
                     AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
                     AccountMeta::new_readonly(system_program::id(), false),
                     AccountMeta::new_readonly(token_program_id(), false),
-                    AccountMeta::new_readonly(system_program::id(), false),
                 ],
             );
 
-            let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-            let mut tx = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-            tx.sign(&[&payer, &mint_authority, mint], recent_blockhash);
-
-            let result = banks_client.process_transaction(tx).await;
-            assert!(
-                result.is_ok(),
-                "Failed to create mint: {} - {:?}",
-                title,
-                result.err()
-            );
-            println!("Mint created: {}", title);
+            let blockhash = banks_client.get_latest_blockhash().await.unwrap();
+            let mut tx = Transaction::new_with_payer(&[ix], Some(&payer.pubkey()));
+            tx.sign(&[&payer, &mint_authority, mint], blockhash);
+            banks_client.process_transaction(tx).await.unwrap();
         }
 
         let plant_name = "Sunflower";
-        let ownership_common = Pubkey::find_program_address(
-            &[plant_name.as_bytes(), user_wallet.pubkey().as_ref()],
+
+        let nft_sets = [
+            (
+                &common_mint,
+                &metadata_common,
+                &edition_common,
+                CardRarityInstruction::GenesisFragment,
+            ),
+            (
+                &rare_mint,
+                &metadata_rare,
+                &edition_rare,
+                CardRarityInstruction::AstralShard,
+            ),
+            (
+                &epic_mint,
+                &metadata_epic,
+                &edition_epic,
+                CardRarityInstruction::MythicCrest,
+            ),
+        ];
+
+        for (mint, metadata, edition, rarity) in nft_sets {
+            let ata = get_associated_token_address(&user_wallet.pubkey(), &mint.pubkey());
+
+            // Correct PDA derivation according to your program
+            let ownership_pda = Pubkey::find_program_address(
+                &[
+                    plant_name.as_bytes(),
+                    user_wallet.pubkey().as_ref(),
+                    &[rarity.clone() as u8],
+                ],
+                &program_id,
+            )
+            .0;
+
+            let plant_counter_pda = Pubkey::find_program_address(
+                &[b"plant_counter", plant_name.as_bytes()],
+                &program_id,
+            )
+            .0;
+
+            let ix = Instruction::new_with_bytes(
+                program_id,
+                &ProgramInstruction::MintNFT {
+                    card_type: rarity.clone(),
+                    plant_name: plant_name.to_string(),
+                }
+                .try_to_vec()
+                .unwrap(),
+                vec![
+                    AccountMeta::new(user_wallet.pubkey(), true),  // 0: User
+                    AccountMeta::new(common_mint.pubkey(), false), // 1: Common mint
+                    AccountMeta::new(rare_mint.pubkey(), false),   // 2: Rare mint
+                    AccountMeta::new(epic_mint.pubkey(), false),   // 3: Epic mint
+                    AccountMeta::new(metadata.pubkey(), false),    // 4: Metadata
+                    AccountMeta::new(edition.pubkey(), false),     // 5: Edition
+                    AccountMeta::new(mint_authority.pubkey(), true), // 6: Mint authority (signer)
+                    AccountMeta::new(
+                        get_associated_token_address(&user_wallet.pubkey(), &mint.pubkey()),
+                        false,
+                    ), // 7: ATA
+                    AccountMeta::new(payer.pubkey(), true),        // 8: Payer (signer)
+                    AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false), // 9
+                    AccountMeta::new_readonly(system_program::id(), false), // 10
+                    AccountMeta::new_readonly(token_program_id(), false), // 11
+                    AccountMeta::new_readonly(spl_associated_token_account::id(), false), // 12: ATA program
+                    AccountMeta::new_readonly(spl_associated_token_account::id(), false), // 13: Token metadata program?
+                    AccountMeta::new(ownership_pda, false), // 14: Ownership PDA
+                    AccountMeta::new(plant_counter_pda, false), // 15: Plant counter PDA
+                ],
+            );
+
+            let blockhash = banks_client.get_latest_blockhash().await.unwrap();
+            let mut tx = Transaction::new_with_payer(&[ix], Some(&payer.pubkey()));
+            tx.sign(&[&payer, &user_wallet, &mint_authority], blockhash);
+
+            assert!(
+                banks_client.process_transaction(tx).await.is_ok(),
+                "Mint failed for {:?}",
+                rarity
+            );
+        }
+
+        let duplicate_data = ProgramInstruction::MintNFT {
+            card_type: CardRarityInstruction::GenesisFragment,
+            plant_name: plant_name.to_string(),
+        }
+        .try_to_vec()
+        .unwrap();
+
+        let ownership_pda = Pubkey::find_program_address(
+            &[
+                plant_name.as_bytes(),
+                user_wallet.pubkey().as_ref(),
+                &[CardRarityInstruction::GenesisFragment as u8],
+            ],
             &program_id,
         )
         .0;
 
-        for (mint, edition, card_type, metadata, name) in &[
-            (
-                &common_mint,
-                &edition_common,
-                CardRarityInstruction::GenesisFragment,
-                &metadata_common,
-                "GenesisFragment",
-            ),
-            (
-                &rare_mint,
-                &edition_rare,
-                CardRarityInstruction::AstralShard,
-                &metadata_rare,
-                "AstralShard",
-            ),
-            (
-                &epic_mint,
-                &edition_epic,
-                CardRarityInstruction::MythicCrest,
-                &metadata_epic,
-                "MythicCrest",
-            ),
-        ] {
-            let data = ProgramInstruction::MintNFT {
-                card_type: card_type.clone(),
-                plant_name: "Sunflower".to_string(),
-            }
-            .try_to_vec()
-            .expect("Failed to serialize MintNFT instruction");
+        let plant_counter_pda =
+            Pubkey::find_program_address(&[b"plant_counter", plant_name.as_bytes()], &program_id).0;
 
-            let ata = get_associated_token_address(&user_wallet.pubkey(), &mint.pubkey());
+        let duplicate_ix = Instruction::new_with_bytes(
+            program_id,
+            &duplicate_data,
+            vec![
+                AccountMeta::new(user_wallet.pubkey(), true),  // 0: User
+                AccountMeta::new(common_mint.pubkey(), false), // 1: Common mint
+                AccountMeta::new(rare_mint.pubkey(), false),   // 2: Rare mint
+                AccountMeta::new(epic_mint.pubkey(), false),   // 3: Epic mint
+                AccountMeta::new(metadata_common.pubkey(), false), // 4: Metadata
+                AccountMeta::new(edition_common.pubkey(), false), // 5: Edition
+                AccountMeta::new(mint_authority.pubkey(), true), // 6: Mint authority (signer)
+                AccountMeta::new(
+                    get_associated_token_address(&user_wallet.pubkey(), &common_mint.pubkey()),
+                    false,
+                ), // 7: ATA
+                AccountMeta::new(payer.pubkey(), true),        // 8: Payer (signer)
+                AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false), // 9
+                AccountMeta::new_readonly(system_program::id(), false), // 10
+                AccountMeta::new_readonly(token_program_id(), false), // 11
+                AccountMeta::new_readonly(spl_associated_token_account::id(), false), // 12: ATA program
+                AccountMeta::new_readonly(spl_associated_token_account::id(), false), // 13: Token metadata program?
+                AccountMeta::new(ownership_pda, false), // 14: Ownership PDA
+                AccountMeta::new(plant_counter_pda, false), // 15: Plant counter PDA
+            ],
+        );
 
-            let instruction = Instruction::new_with_bytes(
-                program_id,
-                &data,
-                vec![
-                    AccountMeta::new(user_wallet.pubkey(), true),
-                    AccountMeta::new(mint.pubkey(), false),
-                    AccountMeta::new(metadata.pubkey(), false),
-                    AccountMeta::new(edition.pubkey(), false),
-                    AccountMeta::new(mint_authority.pubkey(), true),
-                    AccountMeta::new(ata, false),
-                    AccountMeta::new(payer.pubkey(), true),
-                    AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
-                    AccountMeta::new_readonly(system_program::id(), false),
-                    AccountMeta::new_readonly(token_program_id(), false),
-                    AccountMeta::new_readonly(spl_associated_token_account::id(), false),
-                    AccountMeta::new_readonly(system_program::id(), false),
-                    AccountMeta::new(ownership_common, false),
-                ],
-            );
+        let blockhash = banks_client.get_latest_blockhash().await.unwrap();
+        let mut tx = Transaction::new_with_payer(&[duplicate_ix], Some(&payer.pubkey()));
+        tx.sign(&[&payer, &user_wallet, &mint_authority], blockhash);
 
-            let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-            let mut tx = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-            tx.sign(&[&payer, &user_wallet, &mint_authority], recent_blockhash);
+        assert!(
+            banks_client.process_transaction(tx).await.is_err(),
+            "Duplicate mint should fail"
+        );
 
-            let result = banks_client.process_transaction(tx).await;
-            assert!(
-                result.is_ok(),
-                "Failed to mint NFT {}: {:?}",
-                name,
-                result.err()
-            );
-            println!("NFT minted successfully: {}", name);
-        }
-
-        for (mint, edition, card_type, metadata, name) in &[
-            (
-                &common_mint,
-                &edition_common,
-                CardRarityInstruction::GenesisFragment,
-                &metadata_common,
-                "GenesisFragment",
-            ),
-            (
-                &rare_mint,
-                &edition_rare,
-                CardRarityInstruction::AstralShard,
-                &metadata_rare,
-                "AstralShard",
-            ),
-            (
-                &epic_mint,
-                &edition_epic,
-                CardRarityInstruction::MythicCrest,
-                &metadata_epic,
-                "MythicCrest",
-            ),
-        ] {
-            let data = ProgramInstruction::MintNFT {
-                card_type: card_type.clone(),
-                plant_name: "Sunflower".to_string(),
-            }
-            .try_to_vec()
-            .expect("Failed to serialize MintNFT instruction");
-
-            let ata = get_associated_token_address(&user_wallet.pubkey(), &mint.pubkey());
-
-            let instruction = Instruction::new_with_bytes(
-                program_id,
-                &data,
-                vec![
-                    AccountMeta::new(user_wallet.pubkey(), true),
-                    AccountMeta::new(mint.pubkey(), false),
-                    AccountMeta::new(metadata.pubkey(), false),
-                    AccountMeta::new(edition.pubkey(), false),
-                    AccountMeta::new(mint_authority.pubkey(), true),
-                    AccountMeta::new(ata, false),
-                    AccountMeta::new(payer.pubkey(), true),
-                    AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
-                    AccountMeta::new_readonly(system_program::id(), false),
-                    AccountMeta::new_readonly(token_program_id(), false),
-                    AccountMeta::new_readonly(spl_associated_token_account::id(), false),
-                    AccountMeta::new_readonly(system_program::id(), false),
-                    AccountMeta::new(ownership_common, false),
-                ],
-            );
-
-            let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-            let mut tx = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-            tx.sign(&[&payer, &user_wallet, &mint_authority], recent_blockhash);
-
-            let result = banks_client.process_transaction(tx).await;
-            if result.is_ok() {
-                println!("Duplicate mint allowed for GenesisFragment");
-            } else {
-                println!(
-                    "Duplicate mint rejected for GenesisFragment: {:?}",
-                    result.err()
-                );
-            }
-        }
-
-        println!("\nAll tests passed!");
+        println!("All NFT minting tests passed!");
     }
 }
