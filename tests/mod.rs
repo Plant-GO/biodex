@@ -91,6 +91,52 @@ mod tests {
         )
     }
 
+    async fn setup_quiz_mints(
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        program_id: Pubkey,
+        mint_authority: &Keypair,
+    ) -> (Keypair, Keypair) {
+        let codex_mint = Keypair::new();
+        let ascendent_mint = Keypair::new();
+
+        let mint_data = [
+            (&codex_mint, "Orange", "CodexOfInsight"),
+            (&ascendent_mint, "Orange", "AstralShard"),
+        ];
+
+        for (mint, title, symbol) in mint_data {
+            let args = CreateTokenArgs {
+                nft_title: title.to_string(),
+                nft_symbol: symbol.to_string(),
+                nft_uri: "https://example.com/nft.json".to_string(),
+            };
+
+            let data = ProgramInstruction::CreateMint { args }
+                .try_to_vec()
+                .unwrap();
+            let ix = Instruction::new_with_bytes(
+                program_id,
+                &data,
+                vec![
+                    AccountMeta::new(mint.pubkey(), true),
+                    AccountMeta::new(mint_authority.pubkey(), true),
+                    AccountMeta::new(payer.pubkey(), true),
+                    AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
+                    AccountMeta::new_readonly(system_program::id(), false),
+                    AccountMeta::new_readonly(token_program_id(), false),
+                ],
+            );
+
+            let blockhash = banks_client.get_latest_blockhash().await.unwrap();
+            let mut tx = Transaction::new_with_payer(&[ix], Some(&payer.pubkey()));
+            tx.sign(&[&payer, mint_authority, mint], blockhash);
+            banks_client.process_transaction(tx).await.unwrap();
+        }
+
+        (codex_mint, ascendent_mint)
+    }
+
     async fn mint_card(
         banks_client: &mut BanksClient,
         payer: &Keypair,
@@ -138,6 +184,71 @@ mod tests {
                 AccountMeta::new(epic_mint.pubkey(), false),
                 AccountMeta::new(aurora_mint.pubkey(), false),
                 AccountMeta::new(primordial_mint.pubkey(), false),
+                AccountMeta::new(mint_authority.pubkey(), true),
+                AccountMeta::new(ata, false),
+                AccountMeta::new(payer.pubkey(), true),
+                AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
+                AccountMeta::new_readonly(system_program::id(), false),
+                AccountMeta::new_readonly(token_program_id(), false),
+                AccountMeta::new(ownership_pda, false),
+                AccountMeta::new(plant_counter_pda, false),
+                AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+            ],
+        );
+
+        let blockhash = banks_client.get_latest_blockhash().await.unwrap();
+        let mut tx = Transaction::new_with_payer(&[ix], Some(&payer.pubkey()));
+        tx.sign(&[&payer, user, mint_authority], blockhash);
+        banks_client.process_transaction(tx).await.unwrap();
+    }
+
+    async fn mint_quiz_card(
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        program_id: Pubkey,
+        user: &Keypair,
+        mint_authority: &Keypair,
+        plant_name: &str,
+        quiz: bool,
+        expected_rarity: CardRarityInstruction,
+        expected_mint: &Keypair,
+        codex_mint: &Keypair,
+        ascendent_mint: &Keypair,
+    ) {
+        let ata = get_associated_token_address(&user.pubkey(), &expected_mint.pubkey());
+        let ownership_pda = Pubkey::find_program_address(
+            &[
+                plant_name.as_bytes(),
+                user.pubkey().as_ref(),
+                &[expected_rarity.clone() as u8],
+            ],
+            &program_id,
+        )
+        .0;
+
+        let card_type = if quiz {
+            CardRarityInstruction::AscendantSeal
+        } else {
+            CardRarityInstruction::CodexOfInsight
+        };
+
+        let plant_counter_pda =
+            Pubkey::find_program_address(&[b"plant_counter", plant_name.as_bytes()], &program_id).0;
+
+        let ix = Instruction::new_with_bytes(
+            program_id,
+            &ProgramInstruction::MintNFT {
+                card_type,
+                plant_name: plant_name.to_string(),
+                is_new_species: Some(false),
+                quiz_winner: Some(quiz),
+            }
+            .try_to_vec()
+            .unwrap(),
+            vec![
+                AccountMeta::new(user.pubkey(), true),
+                AccountMeta::new(codex_mint.pubkey(), false),
+                AccountMeta::new(ascendent_mint.pubkey(), false),
                 AccountMeta::new(mint_authority.pubkey(), true),
                 AccountMeta::new(ata, false),
                 AccountMeta::new(payer.pubkey(), true),
@@ -280,6 +391,70 @@ mod tests {
         .await;
 
         println!("✅ MythicCrest minted in regular distribution");
+    }
+
+    #[tokio::test]
+    async fn test_mastery_card() {
+        println!("\nTesting Ascendental Seed");
+        let program_id = Pubkey::new_unique();
+        let program_test = ProgramTest::new("program", program_id, processor!(process_instruction));
+        let (mut bank_client, payer, _) = program_test.start().await;
+
+        let mint_authority = create_funded_keypair(&mut bank_client, &payer, 1_000_000_000).await;
+        let (codex_mint, ascendent_mint) =
+            setup_quiz_mints(&mut bank_client, &payer, program_id, &mint_authority).await;
+
+        let user = create_funded_keypair(&mut bank_client, &payer, 1_000_000_000).await;
+
+        let plant_name = "Orange";
+
+        println!("\nMinting AscendantSeal\n");
+        mint_quiz_card(
+            &mut bank_client,
+            &payer,
+            program_id,
+            &user,
+            &mint_authority,
+            plant_name,
+            true,
+            CardRarityInstruction::AscendantSeal,
+            &ascendent_mint,
+            &codex_mint,
+            &ascendent_mint,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_codex_card() {
+        println!("\nTesting Ascendental Seed");
+        let program_id = Pubkey::new_unique();
+        let program_test = ProgramTest::new("program", program_id, processor!(process_instruction));
+        let (mut bank_client, payer, _) = program_test.start().await;
+
+        let mint_authority = create_funded_keypair(&mut bank_client, &payer, 1_000_000_000).await;
+        let (codex_mint, ascendent_mint) =
+            setup_quiz_mints(&mut bank_client, &payer, program_id, &mint_authority).await;
+
+        let user = create_funded_keypair(&mut bank_client, &payer, 1_000_000_000).await;
+
+        let plant_name = "Orange";
+
+        println!("\nMinting CodexOfInsight\n");
+        mint_quiz_card(
+            &mut bank_client,
+            &payer,
+            program_id,
+            &user,
+            &mint_authority,
+            plant_name,
+            false,
+            CardRarityInstruction::CodexOfInsight,
+            &codex_mint,
+            &codex_mint,
+            &ascendent_mint,
+        )
+        .await;
     }
 
     #[tokio::test]
