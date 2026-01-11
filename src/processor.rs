@@ -10,7 +10,7 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
-use solana_sdk::program::invoke_signed;
+use solana_program::program::invoke_signed;
 use spl_associated_token_account::instruction as associated_token_account_instruction;
 use spl_token::instruction as token_instruction;
 
