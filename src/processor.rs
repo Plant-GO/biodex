@@ -1,5 +1,6 @@
 use crate::instruction::{CardRarityInstruction, OwnershipRecord, PlantCounter};
 use borsh::BorshDeserialize;
+use solana_program::program::invoke_signed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -10,12 +11,11 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
-use solana_program::program::invoke_signed;
 use spl_associated_token_account::instruction as associated_token_account_instruction;
 use spl_token::instruction as token_instruction;
 
-const MAX_EPIC: u64 = 20;
-const MAX_RARE: u64 = 50;
+const MAX_EPIC: u64 = 5;
+const MAX_RARE: u64 = 10;
 
 pub struct Processor {}
 
@@ -142,14 +142,14 @@ impl Processor {
             msg!("AuroraSeed AWARDED!");
             msg!("This is a brand new species discovery!");
             counter.first_minter = Some(*user_wallet);
-            counter.epic_count += 1;
-            (CardRarityInstruction::PrimordialRelic, aurora_mint_account)
+            counter.seed_count += 1;
+            (CardRarityInstruction::AuroraSeed, aurora_mint_account)
         } else if !is_new_species && is_first_on_chain && counter.relic_count == 0 {
             msg!("PrimordialRelic AWARDED!");
             msg!("First person to photograph this known plant!");
-            counter.epic_count += 1;
+            counter.relic_count += 1;
             counter.first_minter = Some(*user_wallet);
-            (CardRarityInstruction::AscendantSeal, primordial_mint)
+            (CardRarityInstruction::PrimordialRelic, primordial_mint)
         } else {
             msg!("Regular rarity distribution");
 
@@ -248,12 +248,13 @@ impl Processor {
             *mint_account,
         ))?;
         let ownership_space = ownership_record.len() as u64;
+        let rent_lamports = Rent::get()?.minimum_balance(ownership_space as usize) as usize;
 
         invoke_signed(
             &system_instruction::create_account(
                 &payer.key,
                 &ownership_account.key,
-                Rent::get()?.minimum_balance(0),
+                Rent::get()?.minimum_balance(rent_lamports),
                 ownership_space,
                 program_id,
             ),
@@ -290,6 +291,8 @@ impl Processor {
             let required_space = serialized_counter.len();
             let rent_lamports = Rent::get()?.minimum_balance(required_space);
 
+            msg!("Inside the first timer");
+
             invoke_signed(
                 &system_instruction::create_account(
                     payer.key,
@@ -310,6 +313,8 @@ impl Processor {
                 ]],
             )?;
         }
+        msg!("Outside becasue saved");
+
         let mut data = plant_counter_account.try_borrow_mut_data()?;
         data[..serialized_counter.len()].copy_from_slice(&serialized_counter);
 
@@ -340,15 +345,6 @@ impl Processor {
         let ownership_account = next_account_info(accounts_iter)?;
         let plant_counter_account = next_account_info(accounts_iter)?;
 
-        let (_ownership_pda, ownership_bump) = Self::process_ownership_account(
-            ownership_account,
-            program_id,
-            plant_name,
-            card_type.clone(),
-            user_wallet_account,
-        )
-        .unwrap();
-
         let (_plant_counter_pda, _plant_counter_bump) =
             Self::process_plant_counter_pda(plant_name, program_id, plant_counter_account)?;
 
@@ -356,6 +352,7 @@ impl Processor {
 
         let mut counter = Self::load_or_init_counter(plant_counter_account, plant_name)?;
 
+        // FIRST: Determine what rarity will actually be minted
         let (final_rarity, mint_account) = Self::determine_rarity(
             is_first_on_chain,
             is_new_species.unwrap(),
@@ -369,6 +366,16 @@ impl Processor {
         );
 
         msg!("Final rarity: {:?}", final_rarity);
+
+        // THEN: Check ownership using the FINAL rarity, not the input card_type
+        let (_ownership_pda, ownership_bump) = Self::process_ownership_account(
+            ownership_account,
+            program_id,
+            plant_name,
+            final_rarity.clone(),
+            user_wallet_account,
+        )
+        .unwrap();
 
         msg!("Minting {:?} card for plant {}", final_rarity, plant_name);
 
