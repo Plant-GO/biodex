@@ -55,7 +55,7 @@ impl Processor {
                 plant_name,
                 quiz_winner.unwrap(),
             ),
-        };
+        }?;
 
         Ok(())
     }
@@ -350,7 +350,7 @@ impl Processor {
         .unwrap();
 
         let (_plant_counter_pda, _plant_counter_bump) =
-            Self::process_plant_counter_pda(plant_name, program_id, plant_counter_account).unwrap();
+            Self::process_plant_counter_pda(plant_name, program_id, plant_counter_account)?;
 
         let is_first_on_chain = plant_counter_account.data_is_empty();
 
@@ -380,7 +380,7 @@ impl Processor {
             system_program,
             token_program,
             rent,
-        );
+        )?;
 
         msg!("Minting NFT to associated token account...");
         Self::nft_mint(
@@ -388,7 +388,7 @@ impl Processor {
             mint_account,
             associated_token_account,
             mint_authority,
-        );
+        )?;
         msg!("NFT minted successfully");
 
         Self::create_ownership_record(
@@ -401,7 +401,7 @@ impl Processor {
             final_rarity.clone(),
             mint_account.key,
             ownership_bump,
-        );
+        )?;
 
         Self::save_plant_counter(
             plant_counter_account,
@@ -411,7 +411,7 @@ impl Processor {
             program_id,
             plant_name,
             _plant_counter_bump,
-        );
+        )?;
 
         Ok(())
     }
@@ -469,7 +469,7 @@ impl Processor {
             system_program,
             token_program,
             rent,
-        );
+        )?;
 
         msg!("Associated Token Address: {}", associated_token_account.key);
 
@@ -479,7 +479,7 @@ impl Processor {
             mint_account,
             associated_token_account,
             mint_authority,
-        );
+        )?;
         msg!("NFT minted successfully");
 
         Self::create_ownership_record(
@@ -492,9 +492,9 @@ impl Processor {
             final_card,
             mint_account.key,
             ownership_bump,
-        );
+        )?;
 
-        Self::process_plant_counter_pda(plant_name, program_id, plant_counter_account);
+        Self::process_plant_counter_pda(plant_name, program_id, plant_counter_account)?;
 
         Ok(())
     }

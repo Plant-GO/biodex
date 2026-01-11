@@ -20,17 +20,15 @@ pub struct CreateTokenArgs {
     pub nft_uri: String,
 }
 
-pub fn create_token(accounts: &[AccountInfo], args: CreateTokenArgs) -> ProgramResult {
+pub fn create_token(accounts: &[AccountInfo], _args: CreateTokenArgs) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
     let mint_account = next_account_info(accounts_iter)?;
     let mint_authority = next_account_info(accounts_iter)?;
-    let metadata_account = next_account_info(accounts_iter)?;
     let payer = next_account_info(accounts_iter)?;
     let rent = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
     let token_program = next_account_info(accounts_iter)?;
-    let token_metadata_program = next_account_info(accounts_iter);
 
     msg!("Creating mint account...");
     msg!("Mint: {}", mint_account.key);
@@ -67,39 +65,6 @@ pub fn create_token(accounts: &[AccountInfo], args: CreateTokenArgs) -> ProgramR
             rent.clone(),
         ],
     )?;
-
-    msg!("Creating metadata account...");
-    // msg!("Metadata account address: {}", metadata_account.key);
-    // invoke(
-    //     &mpl_instruction::create_metadata_accounts_v3(
-    //         *token_metadata_program.key,
-    //         *metadata_account.key,
-    //         *mint_account.key,
-    //         *mint_authority.key,
-    //         *payer.key,
-    //         *mint_authority.key,
-    //         args.nft_title,
-    //         args.nft_symbol,
-    //         args.nft_uri,
-    //         None,
-    //         0,
-    //         true,
-    //         false,
-    //         None,
-    //         None,
-    //         None,
-    //     ),
-    //     &[
-    //         metadata_account.clone(),
-    //         mint_account.clone(),
-    //         mint_authority.clone(),
-    //         payer.clone(),
-    //         token_metadata_program.clone(),
-    //         rent.clone(),
-    //     ],
-    // );
-
-    msg!("Token mint created successfully.");
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 [package]
-name = "program"
+name = "biodex"
 version = "0.1.0"
 edition = "2021"
 
@@ -22,3 +22,7 @@ tokio = { version = "1.28", features = ["full"] }
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
+
+[[test]]
+name = "integration_tests"
+path = "tests/mod.rs"

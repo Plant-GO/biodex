@@ -16,16 +16,20 @@ pub struct CounterAccount {
     pub count: u64,
 }
 
+// Aba chai jun Ownership data cha tyo chai provide garna milne aeuta kei banaune
+
 entrypoint!(process_instruction);
 
-pub fn process_instruction<'a>(
-    program_id: &Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    instruction_data: &[u8],
+pub fn process_instruction<'a, 'b, 'c, 'd>(
+    program_id: &'a Pubkey,
+    accounts: &'b [AccountInfo<'c>],
+    instruction_data: &'d [u8],
 ) -> ProgramResult {
+    let accounts: &'b [AccountInfo<'b>] =
+        unsafe { std::mem::transmute::<&'b [AccountInfo<'c>], &'b [AccountInfo<'b>]>(accounts) };
+
     let instruction = ProgramInstruction::try_from_slice(instruction_data)
         .map_err(|_| ProgramError::InvalidInstructionData)?;
-
     match instruction {
         ProgramInstruction::CreateMint { args } => create_token(accounts, args)?,
         ProgramInstruction::MintNFT {
@@ -42,6 +46,5 @@ pub fn process_instruction<'a>(
             quiz_winner,
         )?,
     };
-
     Ok(())
 }
