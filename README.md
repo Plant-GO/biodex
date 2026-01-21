@@ -56,151 +56,128 @@ CreateMint {
   }
 }
 
-Required Accounts (in order)
-Index	Account	Writable	Signer
-0	Mint Account	✅	❌
-1	Mint Authority	❌	❌
-2	Payer	✅	✅
-3	Rent Sysvar	❌	❌
-4	System Program	❌	❌
-5	Token Program	❌	❌
+# PlantGO 🌱
 
-Notes:
+**PlantGO** is a mobile application designed to promote biodiversity awareness and citizen engagement through gamification, artificial intelligence, and blockchain technologies. By turning plant discovery into an interactive game, PlantGO encourages users to explore nature, learn about local flora, and contribute to scientific data collection.
 
-Mint decimals = 0
+---
 
-Mint authority == freeze authority
+## Table of Contents
 
-Metadata (title, symbol, URI) is currently frontend-handled
+- [Overview](#overview)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Gamification & Rewards](#gamification--rewards)
+- [Blockchain Integration](#blockchain-integration)
+- [Technology Stack](#technology-stack)
+- [Getting Started](#getting-started)
+- [Contributing](#contributing)
+- [Contact](#contact)
 
-2️⃣ MintNFT
+---
 
-Mints an NFT based on plant discovery or quiz logic.
+## Overview
 
-Instruction
-MintNFT {
-  card_type: CardRarityInstruction
-  plant_name: string
-  is_new_species?: boolean
-  quiz_winner?: boolean
-}
+Biodiversity conservation is at the heart of the United Nations Sustainable Development Goals (SDG 15: Life on Land). Engaging citizens effectively in biodiversity monitoring, however, remains a challenge. PlantGO leverages gamification to motivate learning, sustain engagement, and encourage pro-environmental behaviors while building a crowdsourced database of plant sightings.
 
-🎴 Card Rarity Types
-enum CardRarityInstruction {
-  GenesisFragment,   // Common
-  AstralShard,       // Rare
-  MythicCrest,       // Epic
-  AscendantSeal,     // Quiz Winner
-  CodexOfInsight,    // Quiz Participation
-  PrimordialRelic,   // First known discovery
-  AuroraSeed         // First ever species discovery
-}
+PlantGO integrates a treasure-hunt style gameplay, where users receive riddles and challenges guiding them to discover and identify plants in their local environment. Plant identification is performed via a camera-based interface powered by a machine learning model (VGG16 architecture), which provides confidence levels to inform users about prediction reliability.
 
-🌿 MintNFT – Plant Discovery Flow
+---
 
-Used when minting:
-GenesisFragment, AstralShard, MythicCrest, PrimordialRelic, AuroraSeed
+## Features
 
-Required Accounts (in order)
-Index	Account
-0	User Wallet
-1	Common Mint
-2	Rare Mint
-3	Epic Mint
-4	Aurora Mint
-5	Primordial Mint
-6	Mint Authority
-7	User Associated Token Account
-8	Payer
-9	Rent Sysvar
-10	System Program
-11	Token Program
-12	Ownership PDA
-13	Plant Counter PDA
-🧪 MintNFT – Quiz Flow
+- **Plant Discovery:** Explore your local environment to discover and identify plants.  
+- **AI-based Identification:** Capture plant images and classify them using a VGG16 machine learning model.  
+- **Gamified Challenges:** Solve riddles and complete quests to earn points and rewards.  
+- **Crowdsourced Validation:** Community-driven verification ensures data accuracy and reliability.  
+- **Digital Botanical Map:** Verified sightings contribute to a collaborative map of global plant biodiversity.  
+- **Blockchain Rewards:** Earn collectible cards for plant discoveries, quiz participation, and rare finds.  
 
-Used when minting:
-CodexOfInsight, AscendantSeal
+---
 
-Required Accounts (in order)
-Index	Account
-0	User Wallet
-1	Codex Mint
-2	Ascendant Mint
-3	Mint Authority
-4	User Associated Token Account
-5	Payer
-6	Rent Sysvar
-7	System Program
-8	Token Program
-9	Ownership PDA
-10	Plant Counter PDA
-🧾 Program Derived Addresses (PDAs)
-1️⃣ Ownership PDA
+## How It Works
 
-Ensures a user cannot mint the same plant card twice.
+1. **Receive Challenges:** Users receive riddles and quests directing them to local plants.  
+2. **Capture & Identify:** Take photos of plants using the in-app camera. AI classifies the plant and displays prediction confidence.  
+3. **Community Validation:** The blockchain-backed voting system allows users to confirm or correct identifications.  
+4. **Earn Rewards:** Gamified incentives, including points, levels, and collectible cards, motivate continued participation.  
+5. **Track Contributions:** Verified plant sightings are added to the digital botanical map, helping researchers and policymakers.  
 
-seeds = [
-  plant_name (bytes),
-  user_wallet (pubkey),
-  card_type (u8)
-]
+---
 
+## Gamification & Rewards
 
-Stores ownership metadata
+PlantGO turns plant exploration into a fun and competitive experience with **cards and points**:  
 
-One per (user + plant + rarity)
+- **Plant Discovery Cards:**  
+  - Common, Rare, Epic, and Mastery cards are minted depending on the plants discovered.  
+- **Quiz Participation Cards:**  
+  - All quiz participants earn a **Codex of Insight** card.  
+  - Winners receive an **Ascendant Seal** card.  
+- **Special Achievement Cards:**  
+  - First to identify an invasive plant: **Aurora Seed** card.  
+  - First person in the world to discover a new plant species: **Primordial Relic** card.  
 
-2️⃣ Plant Counter PDA
+These rewards are securely minted and tracked on the blockchain, ensuring fairness, transparency, and data integrity.
 
-Tracks mint counts and first discovery.
+---
 
-seeds = [
-  "plant_counter",
-  plant_name
-]
+## Blockchain Integration
 
-📊 Rarity Distribution Rules
-Condition	Card Minted
-New species + first on-chain	AuroraSeed
-Known species + first on-chain	PrimordialRelic
-Epic < 20	MythicCrest
-Rare < 50	AstralShard
-Otherwise	GenesisFragment
-🧾 Ownership Record (Stored On-Chain)
-{
-  owner: Pubkey
-  plant_name: string
-  rarity: CardRarityInstruction
-  minted_at: UnixTimestamp
-  nft_mint: Pubkey
-}
+PlantGO uses blockchain to ensure secure storage, transparent rewards, and community trust:  
 
-🌱 Plant Counter Data
-{
-  plant_name: string
-  seed_count: number
-  relic_count: number
-  epic_count: number
-  rare_count: number
-  common_count: number
-  mastery_count: number
-  codex_count: number
-  first_minter?: Pubkey
-}
+```rust
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+pub enum CardRarityInstruction {
+    // Common
+    GenesisFragment,
 
-🪙 NFT Behavior
+    // Rare
+    AstralShard,
 
-SPL Token
+    // Epic
+    MythicCrest,
 
-Supply = 1
+    // Mastery
+    AscendantSeal,
 
-Minted to user's ATA
+    // Knowledge
+    CodexOfInsight,
 
-ATA auto-created if missing
+    // First to discover a plant
+    PrimordialRelic,
 
-❌ Common Errors
-Error	Meaning
-InvalidInstructionData	Wrong Borsh encoding
-InvalidArgument	PDA mismatch
-Custom(999)	User already owns this card
+    // Only first invasive plant
+    AuroraSeed,
+}'''
+
+## Blockchain Rewards & Participation
+
+- Cards are issued based on **rarity**, **achievements**, and **first discoveries**.  
+- Blockchain-backed voting validates plant identifications.  
+- Tokens and card ownership encourage sustained participation.  
+
+---
+
+## Technology Stack
+
+- **Mobile App:** React Native / Flutter (cross-platform)  
+- **AI:** PyTorch, TensorFlow (VGG16-based plant classification)  
+- **Blockchain:** Solana / NEAR Protocol (for card minting and validation)  
+- **Backend:** Node.js / Rust (Quinn or Actix for P2P and API services)  
+- **Database:** PostgreSQL / MongoDB (for user and plant data)  
+
+---
+
+## Getting Started
+
+1. Clone the repository:  
+   ```bash
+   git clone https://github.com/yourusername/PlantGO.git
+2. Install dependencies for the mobile app and backend.
+
+3. Configure blockchain network settings.
+
+4. Run the backend server and launch the mobile app.
+
+5. Start discovering plants and collecting cards

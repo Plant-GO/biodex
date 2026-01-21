@@ -324,7 +324,7 @@ impl Processor {
     fn process_minting<'a>(
         program_id: &Pubkey,
         accounts: &'a [AccountInfo<'a>],
-        card_type: CardRarityInstruction,
+        _card_type: CardRarityInstruction,
         plant_name: &str,
         is_new_species: Option<bool>,
     ) -> ProgramResult {
